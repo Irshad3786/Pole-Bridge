@@ -41,43 +41,41 @@ User input:
 "${input}"
 
 TASK:
-1. Extract the recipient email address (if present)
-2. Understand the intent and purpose of the email from the user input
-3. Generate a clear, professional email subject
-4. Write a well-structured plain text email body based on the intent
-5. Design a modern, clean EMAIL using ONLY HTML with INLINE CSS
-6. The EMAIL DESIGN must visually match the written body content
-7. The SAME HTML must be usable:
-   - for website preview
-   - for sending the actual email
+1. Understand the topic or subject the user wants to create a poll/survey about
+2. Generate exactly 1 relevant and meaningful poll question based on the topic
+3. Provide 4 multiple choice options for that question
+4. Make the question clear, unbiased, and easy to understand
+5. Ensure options are diverse and cover different perspectives
 
-DESIGN RULES:
-- Use ONLY plain HTML with INLINE CSS
-- NO Tailwind CSS
-- NO <style> tags
-- Use table-based layout (email-client safe)
-- No JavaScript
-- No external fonts, images, or assets
-- Professional and minimal UI
-- Use sections like header, content block, divider, footer
-- Optional visual elements: dividers or simple progress/skill bars using divs
+QUESTION RULES:
+- Generate exactly 1 question related to the topic
+- The question should be clear and specific
+- The question should be neutral and unbiased
+- Avoid yes/no questions when possible - provide nuanced options
 
-CONTENT RULES:
-- Subject must match the email intent
-- Body must be human, natural, and professional
-- Do NOT hardcode job-related content unless required by the input
+OPTION RULES:
+- Each question must have exactly 4 options
+- Options should be mutually exclusive
+- Options should cover a good range of possible answers
+- Keep options concise (2-8 words each)
+- Order options logically (e.g., scale from low to high, or alphabetically)
 
 OUTPUT RULES:
 - Return ONLY valid JSON
 - No explanations
 - No markdown
+- No code blocks
 
 Return JSON in EXACTLY this format:
 {
-  "email": "",
-  "subject": "",
-  "body": "",
-  "email_html": ""
+  "title": "Brief poll title (3-6 words)",
+  "description": "Short description of the poll purpose (1-2 sentences)",
+  "questions": [
+    {
+      "question": "Question text here?",
+      "options": ["Option 1", "Option 2", "Option 3", "Option 4"]
+    }
+  ]
 }
 `;
 
@@ -108,10 +106,10 @@ Return JSON in EXACTLY this format:
     };
 
     const sanitizeKeys = (jsonish: string): string => {
-      let out = jsonish.replace(/(^|[\s,{])(email|subject|body)\s*:/g, (m) => {
-        return m.replace(/(email|subject|body)\s*:/, '"$1":');
+      let out = jsonish.replace(/(^|[\s,{])(title|description|questions|question|options)\s*:/g, (m) => {
+        return m.replace(/(title|description|questions|question|options)\s*:/, '"$1":');
       });
-      out = out.replace(/\"(email|subject|body)\"\s*:\s*'([^']*)'/g, '"$1":"$2"');
+      out = out.replace(/\"(title|description|questions|question|options)\"\s*:\s*'([^']*)'/g, '"$1":"$2"');
       out = out.replace(/,(\s*[}\]])/g, '$1');
       return out;
     };
@@ -128,8 +126,18 @@ Return JSON in EXACTLY this format:
       );
     }
 
-    const result = parsed as { email?: string; subject?: string; body?: string };
-    if (!result || typeof result.email !== "string" || typeof result.subject !== "string" || typeof result.body !== "string") {
+    const result = parsed as { 
+      title?: string; 
+      description?: string; 
+      questions?: Array<{ question: string; options: string[] }> 
+    };
+    if (
+      !result || 
+      typeof result.title !== "string" || 
+      typeof result.description !== "string" || 
+      !Array.isArray(result.questions) ||
+      result.questions.length === 0
+    ) {
       return NextResponse.json(
         { error: "Parsed JSON missing required fields", raw, candidate },
         { status: 502 }

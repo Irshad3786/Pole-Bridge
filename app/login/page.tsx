@@ -1,16 +1,25 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Logo from '@/components/Logo'
 
 function Login() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isSignUp, setIsSignUp] = useState(false)
   const [loginData, setLoginData] = useState({ email: '', password: '' })
   const [signupData, setSignupData] = useState({ name: '', email: '', password: '', confirmPassword: '' })
   const [formError, setFormError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [callbackUrl, setCallbackUrl] = useState('/dashboard')
+
+  useEffect(() => {
+    const callback = searchParams.get('callbackUrl')
+    if (callback) {
+      setCallbackUrl(callback)
+    }
+  }, [searchParams])
 
   const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -40,7 +49,7 @@ function Login() {
     }
 
     if (result?.ok) {
-      router.push('/dashboard')
+      router.push(callbackUrl)
     }
   }
 
@@ -85,7 +94,7 @@ function Login() {
     })
 
     if (signInResult?.ok) {
-      router.push('/dashboard')
+      router.push(callbackUrl)
     } else {
       setFormError('Account created! Please sign in.')
       setIsSignUp(false)
@@ -95,7 +104,7 @@ function Login() {
 
   const handleGoogleSignIn = async () => {
     setFormError('')
-    await signIn('google', { callbackUrl: '/dashboard' })
+    await signIn('google', { callbackUrl: callbackUrl })
   }
 
   return (
