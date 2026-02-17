@@ -41,6 +41,8 @@ export default function PollPage() {
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [hasVotedQuestions, setHasVotedQuestions] = useState<Set<number>>(new Set())
   const [isSocketConnected, setIsSocketConnected] = useState(false)
+  const [isPollingMode, setIsPollingMode] = useState(false)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchPoll = async () => {
     setError(null)
@@ -77,40 +79,63 @@ export default function PollPage() {
     }
   }, [pollId])
 
-  // Socket.IO setup for real-time updates
+  // Socket.IO setup with intelligent fallback to polling
   useEffect(() => {
     if (!pollId) {
-      console.log('⚠️ No pollId, skipping socket setup')
+      console.log('⚠️ No pollId, skipping real-time setup')
       return
     }
 
-    console.log('🔌 Setting up Socket.IO for poll:', pollId)
+    console.log('🔌 Setting up real-time updates for poll:', pollId)
 
-    // Socket URL - defaults to current origin if not specified
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin
-    console.log('🌐 Socket URL:', socketUrl)
+    // Socket URL - try to connect to Socket.IO server
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL
+    
+    if (!socketUrl) {
+      console.log('⚠️ NEXT_PUBLIC_SOCKET_URL not set, using polling mode')
+      setIsPollingMode(true)
+      startPolling()
+      return () => {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+          pollingIntervalRef.current = null
+        }
+      }
+    }
+
+    console.log('🌐 Attempting Socket.IO connection to:', socketUrl)
 
     const socket = io(socketUrl, {
       path: '/socket.io/',
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: Infinity,
-      transports: ['websocket', 'polling']
+      reconnectionAttempts: 5,
+      transports: ['websocket', 'polling'],
+      timeout: 10000
     })
+
+    let connectionTimeout: NodeJS.Timeout
 
     // Handle connection
     const onConnect = () => {
       console.log('✅ Socket connected, ID:', socket.id)
       setIsSocketConnected(true)
+      setIsPollingMode(false)
       socket.emit('join-poll', pollId)
       console.log('📋 Joined poll room:', pollId)
+      
+      // Stop polling if it was started
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+        console.log('🛑 Stopped polling (Socket.IO connected)')
+      }
     }
 
     // Handle votes from other clients
     const onVoteUpdate = async (data: any) => {
       console.log('🗳️ Vote-update event received:', data)
-      // Refetch the poll to get latest votes
       try {
         const response = await fetch(`/api/polls/${pollId}`)
         const result = await response.json()
@@ -146,9 +171,24 @@ export default function PollPage() {
 
     socketRef.current = socket
 
+    // Fallback: If socket doesn't connect within 10 seconds, start polling
+    connectionTimeout = setTimeout(() => {
+      if (!socket.connected) {
+        console.log('⏰ Socket.IO connection timeout - falling back to polling mode')
+        console.log('💡 Deploy Socket.IO server separately for real-time updates')
+        setIsPollingMode(true)
+        startPolling()
+      }
+    }, 10000)
+
     // Cleanup
     return () => {
+      clearTimeout(connectionTimeout)
       console.log('🧹 Cleaning up socket for poll:', pollId)
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
       socket.emit('leave-poll', pollId)
       socket.off('connect', onConnect)
       socket.off('vote-update', onVoteUpdate)
@@ -158,6 +198,24 @@ export default function PollPage() {
       socket.disconnect()
     }
   }, [pollId])
+
+  // HTTP Polling fallback function
+  const startPolling = () => {
+    if (pollingIntervalRef.current) return
+    
+    console.log('🔄 Starting HTTP polling mode (updates every 3 seconds)')
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/polls/${pollId}`)
+        const result = await response.json()
+        if (response.ok && result.poll) {
+          setPoll(result.poll)
+        }
+      } catch (err) {
+        console.error('Polling error:', err)
+      }
+    }, 3000)
+  }
 
   const handleVote = async (questionIndex: number, optionIndex: number) => {
     // Check if user is logged in
@@ -344,8 +402,13 @@ export default function PollPage() {
             <div className="flex items-center gap-3">
               {/* Connection Status Indicator */}
               <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
-                <div className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                <span>{isSocketConnected ? 'Live' : 'Disconnected'}</span>
+                <div className={`w-2 h-2 rounded-full ${
+                  isSocketConnected ? 'bg-green-500' : 
+                  isPollingMode ? 'bg-yellow-500' : 'bg-red-500'
+                }`} />
+                <span>
+                  {isSocketConnected ? 'Live' : isPollingMode ? 'Polling' : 'Connecting...'}
+                </span>
               </div>
               
               {session ? (

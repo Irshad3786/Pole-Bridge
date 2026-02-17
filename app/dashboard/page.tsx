@@ -61,6 +61,8 @@ function Dashboard() {
   const [copiedPollId, setCopiedPollId] = useState<string | null>(null)
   const socketRef = useRef<Socket | null>(null)
   const [isSocketConnected, setIsSocketConnected] = useState(false)
+  const [isPollingMode, setIsPollingMode] = useState(false)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Fetch polls on component mount and when showPolls is toggled
   useEffect(() => {
@@ -69,33 +71,55 @@ function Dashboard() {
     }
   }, [showPolls])
 
-  // Socket.IO setup for real-time updates
+  // Socket.IO setup with intelligent fallback to polling
   useEffect(() => {
-    console.log('🔌 Setting up Socket.IO on dashboard...')
+    console.log('🔌 Setting up real-time updates on dashboard...')
 
-    // Socket URL - defaults to current origin if not specified
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin
-    console.log('🌐 Socket URL:', socketUrl)
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL
+    
+    if (!socketUrl) {
+      console.log('⚠️ NEXT_PUBLIC_SOCKET_URL not set, using polling mode')
+      setIsPollingMode(true)
+      startPolling()
+      return () => {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+          pollingIntervalRef.current = null
+        }
+      }
+    }
+
+    console.log('🌐 Attempting Socket.IO connection to:', socketUrl)
 
     const socketInstance = io(socketUrl, {
       path: '/socket.io/',
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: Infinity,
-      transports: ['websocket', 'polling']
+      reconnectionAttempts: 5,
+      transports: ['websocket', 'polling'],
+      timeout: 10000
     })
+
+    let connectionTimeout: NodeJS.Timeout
 
     socketInstance.on('connect', () => {
       console.log('✅ Dashboard Socket.IO connected:', socketInstance.id)
       setIsSocketConnected(true)
-      // Fetch polls first to get the list
+      setIsPollingMode(false)
+      
+      // Stop polling if it was started
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+        console.log('🛑 Stopped polling (Socket.IO connected)')
+      }
+      
       fetchPolls()
     })
 
     socketInstance.on('vote-update', async (data: any) => {
       console.log('🗳️ Dashboard received vote-update:', data)
-      // Refetch polls to show updated vote counts
       await fetchPolls()
     })
 
@@ -111,7 +135,22 @@ function Dashboard() {
 
     socketRef.current = socketInstance
 
+    // Fallback: If socket doesn't connect within 10 seconds, start polling
+    connectionTimeout = setTimeout(() => {
+      if (!socketInstance.connected) {
+        console.log('⏰ Socket.IO connection timeout - falling back to polling mode')
+        console.log('💡 Deploy Socket.IO server separately for real-time updates')
+        setIsPollingMode(true)
+        startPolling()
+      }
+    }, 10000)
+
     return () => {
+      clearTimeout(connectionTimeout)
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
       if (socketInstance) {
         savedPolls.forEach(poll => {
           socketInstance.emit('leave-poll', poll._id)
@@ -120,6 +159,20 @@ function Dashboard() {
       }
     }
   }, [])
+
+  // HTTP Polling fallback function
+  const startPolling = () => {
+    if (pollingIntervalRef.current) return
+    
+    console.log('🔄 Starting HTTP polling mode (updates every 5 seconds)')
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        await fetchPolls()
+      } catch (err) {
+        console.error('Polling error:', err)
+      }
+    }, 5000)
+  }
 
   // Update socket poll rooms when savedPolls changes
   useEffect(() => {
@@ -360,8 +413,13 @@ function Dashboard() {
             <div className="flex items-center gap-1 sm:gap-3">
               {/* Connection Status Indicator */}
               <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 mr-2">
-                <div className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                <span>{isSocketConnected ? 'Live' : 'Disconnected'}</span>
+                <div className={`w-2 h-2 rounded-full ${
+                  isSocketConnected ? 'bg-green-500' : 
+                  isPollingMode ? 'bg-yellow-500' : 'bg-red-500'
+                }`} />
+                <span>
+                  {isSocketConnected ? 'Live' : isPollingMode ? 'Polling' : 'Connecting...'}
+                </span>
               </div>
               
               <button 
