@@ -2,11 +2,5 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "framework": "nextjs",
-  "env": {
-    "NEXTAUTH_URL": "@nextauth_url",
-    "NEXTAUTH_SECRET": "@nextauth_secret",
-    "MONGODB_URI": "@mongodb_uri",
-    "GROQ_API_KEY": "@groq_api_key"
-  }
+  "framework": "nextjs"
 }
