@@ -1,24 +1,25 @@
-import { Suspense } from 'react'
-import LoginContent from './LoginContent'
+'use client'
+import React, { useState, useEffect } from 'react'
+import { signIn } from 'next-auth/react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Logo from '@/components/Logo'
 
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<LoginFallback />}>
-      <LoginContent />
-    </Suspense>
-  )
-}
+function LoginContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [loginData, setLoginData] = useState({ email: '', password: '' })
+  const [signupData, setSignupData] = useState({ name: '', email: '', password: '', confirmPassword: '' })
+  const [formError, setFormError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [callbackUrl, setCallbackUrl] = useState('/dashboard')
 
-function LoginFallback() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-purple-50 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading...</p>
-      </div>
-    </div>
-  )
-}
+  useEffect(() => {
+    const callback = searchParams.get('callbackUrl')
+    if (callback) {
+      setCallbackUrl(callback)
+    }
+  }, [searchParams])
 
   const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -336,4 +337,4 @@ function LoginFallback() {
   )
 }
 
-export default Login
+export default LoginContent
