@@ -61,7 +61,6 @@ function Dashboard() {
   const [copiedPollId, setCopiedPollId] = useState<string | null>(null)
   const socketRef = useRef<Socket | null>(null)
   const [isSocketConnected, setIsSocketConnected] = useState(false)
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Fetch polls on component mount and when showPolls is toggled
   useEffect(() => {
@@ -70,118 +69,57 @@ function Dashboard() {
     }
   }, [showPolls])
 
-  // Socket.IO setup with fallback to polling
+  // Socket.IO setup for real-time updates
   useEffect(() => {
-    // Get socket URL from environment variable
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL
-    
-    // Try to connect to Socket.IO if URL is provided
-    if (socketUrl) {
-      console.log('🔌 Setting up Socket.IO on dashboard...')
-      console.log('🌐 Socket URL:', socketUrl)
+    console.log('🔌 Setting up Socket.IO on dashboard...')
 
-      const socketInstance = io(socketUrl, {
-        path: '/socket.io/',
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        reconnectionAttempts: 5,
-        transports: ['websocket', 'polling'],
-        timeout: 10000
-      })
+    // Socket URL - defaults to current origin if not specified
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin
+    console.log('🌐 Socket URL:', socketUrl)
 
-      socketInstance.on('connect', () => {
-        console.log('✅ Dashboard Socket.IO connected:', socketInstance.id)
-        setIsSocketConnected(true)
-        
-        // Clear polling if socket connected
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current)
-          pollingIntervalRef.current = null
-          console.log('🛑 Stopped HTTP polling (socket connected)')
-        }
-        
-        // Fetch polls first to get the list
-        fetchPolls()
-      })
+    const socketInstance = io(socketUrl, {
+      path: '/socket.io/',
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+      transports: ['websocket', 'polling']
+    })
 
-      socketInstance.on('vote-update', async (data: any) => {
-        console.log('🗳️ Dashboard received vote-update:', data)
-        // Refetch polls to show updated vote counts
-        await fetchPolls()
-      })
+    socketInstance.on('connect', () => {
+      console.log('✅ Dashboard Socket.IO connected:', socketInstance.id)
+      setIsSocketConnected(true)
+      // Fetch polls first to get the list
+      fetchPolls()
+    })
 
-      socketInstance.on('connect_error', (error: any) => {
-        console.error('⚠️ Dashboard Socket.IO connection error:', error)
-        setIsSocketConnected(false)
-        
-        // Fallback to polling
-        if (!pollingIntervalRef.current) {
-          console.log('⚠️ Socket failed, falling back to HTTP polling')
-          startPolling()
-        }
-      })
+    socketInstance.on('vote-update', async (data: any) => {
+      console.log('🗳️ Dashboard received vote-update:', data)
+      // Refetch polls to show updated vote counts
+      await fetchPolls()
+    })
 
-      socketInstance.on('disconnect', (reason: any) => {
-        console.log('❌ Dashboard Socket.IO disconnected:', reason)
-        setIsSocketConnected(false)
-        
-        // Start polling as fallback
-        if (reason === 'io server disconnect' || reason === 'transport close') {
-          startPolling()
-        }
-      })
+    socketInstance.on('connect_error', (error: any) => {
+      console.error('⚠️ Dashboard Socket.IO connection error:', error)
+      setIsSocketConnected(false)
+    })
 
-      socketRef.current = socketInstance
+    socketInstance.on('disconnect', (reason: any) => {
+      console.log('❌ Dashboard Socket.IO disconnected:', reason)
+      setIsSocketConnected(false)
+    })
 
-      // Fallback: If socket doesn't connect within 10 seconds, start polling
-      const fallbackTimeout = setTimeout(() => {
-        if (!socketInstance.connected) {
-          console.log('⏰ Socket connection timeout, starting HTTP polling')
-          startPolling()
-        }
-      }, 10000)
+    socketRef.current = socketInstance
 
-      return () => {
-        clearTimeout(fallbackTimeout)
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current)
-          pollingIntervalRef.current = null
-        }
-        if (socketInstance) {
-          savedPolls.forEach(poll => {
-            socketInstance.emit('leave-poll', poll._id)
-          })
-          socketInstance.disconnect()
-        }
-      }
-    } else {
-      // No socket URL, use HTTP polling
-      console.log('⚠️ No NEXT_PUBLIC_SOCKET_URL found, using HTTP polling')
-      startPolling()
-      
-      return () => {
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current)
-          pollingIntervalRef.current = null
-        }
+    return () => {
+      if (socketInstance) {
+        savedPolls.forEach(poll => {
+          socketInstance.emit('leave-poll', poll._id)
+        })
+        socketInstance.disconnect()
       }
     }
   }, [])
-
-  // HTTP Polling fallback function
-  const startPolling = () => {
-    if (pollingIntervalRef.current) return // Already polling
-    
-    console.log('🔄 Starting HTTP polling for dashboard updates')
-    pollingIntervalRef.current = setInterval(async () => {
-      try {
-        await fetchPolls()
-      } catch (err) {
-        console.error('Polling error:', err)
-      }
-    }, 5000) // Poll every 5 seconds (less frequent than poll page)
-  }
 
   // Update socket poll rooms when savedPolls changes
   useEffect(() => {
@@ -422,8 +360,8 @@ function Dashboard() {
             <div className="flex items-center gap-1 sm:gap-3">
               {/* Connection Status Indicator */}
               <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 mr-2">
-                <div className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                <span>{isSocketConnected ? 'Live' : 'Polling'}</span>
+                <div className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span>{isSocketConnected ? 'Live' : 'Disconnected'}</span>
               </div>
               
               <button 
