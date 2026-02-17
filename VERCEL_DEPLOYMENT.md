@@ -16,20 +16,17 @@
 ### 3. Socket.IO on Vercel ⚠️
 **Important**: Vercel uses serverless functions which don't support persistent WebSocket connections with custom servers.
 
-**Options**:
-1. **Remove Socket.IO** (Recommended for Vercel)
-   - Delete Socket.IO logic from your app
-   - Use HTTP polling for real-time updates
+✅ **Your app now uses hybrid real-time updates:**
+- Socket.IO for instant updates (when configured)
+- HTTP polling as automatic fallback (works on Vercel without setup)
 
-2. **Use External Service** (Recommended for real-time features)
-   - **Pusher**: pusher.com
-   - **Socket.io Cloud**: socket.io/cloud
-   - **Supabase Realtime**: supabase.com
-   - **Firebase**: firebase.google.com
+**See [REALTIME_SETUP.md](./REALTIME_SETUP.md) for detailed options:**
+1. **HTTP Polling** (No setup) - Updates every 3 seconds
+2. **Socket.IO** (Requires external server) - Instant updates
 
-3. **Keep local Socket.IO** (Development only)
-   - Works fine locally with `npm run dev`
-   - Won't work on Vercel production
+The app automatically detects the best method and shows connection status in the navbar:
+- 🟢 **Live** = Socket.IO connected
+- 🟡 **Polling** = HTTP polling active
 
 ### 4. Environment Variables in Vercel
 1. Go to https://vercel.com/dashboard/projects
@@ -40,6 +37,9 @@
    - `NEXTAUTH_SECRET`: Generate with `openssl rand -base64 32`
    - `MONGODB_URI`: Your MongoDB connection string
    - `GROQ_API_KEY`: Your GROQ API key
+   - `NEXT_PUBLIC_SOCKET_URL`: (Optional) Your Socket.IO server URL
+     - Leave empty to use HTTP polling
+     - Set to external Socket.IO server URL for real-time (e.g., https://your-app.railway.app)
 
 ### 5. Deploy Steps
 1. Push code to GitHub
@@ -49,33 +49,29 @@
 5. Add environment variables
 6. Click Deploy
 
-### 6. Recommended: Replace Socket.IO with HTTP Polling
+### 6. Real-time Updates Configuration
 
-For real-time poll updates without Socket.IO:
-```typescript
-// Use React Query or SWR with polling
-import { useQuery } from '@tanstack/react-query';
+Your app automatically handles real-time updates:
+- ✅ **Works immediately** with HTTP polling (3-second updates)
+- ✅ **Upgrade to instant updates** by deploying Socket.IO server
 
-export function usePollUpdates(pollId: string) {
-  return useQuery({
-    queryKey: ['poll', pollId],
-    queryFn: () => fetch(`/api/polls/${pollId}`).then(r => r.json()),
-    refetchInterval: 2000, // Poll every 2 seconds
-  });
-}
-```
+See [REALTIME_SETUP.md](./REALTIME_SETUP.md) for Socket.IO setup guide.
 
 ## Verification Checklist
 - [ ] `package.json` scripts updated
 - [ ] Environment variables added to Vercel
-- [ ] No custom server.js references
+  - [ ] `NEXTAUTH_URL`
+  - [ ] `NEXTAUTH_SECRET`
+  - [ ] `MONGODB_URI`
+  - [ ] `GROQ_API_KEY`
+  - [ ] `NEXT_PUBLIC_SOCKET_URL` (optional, for Socket.IO)
 - [ ] Database (MongoDB) accessible from Vercel IP
 - [ ] All API routes in `/app/api`
-- [ ] Socket.IO either removed or using external service
-- [ ] Delete `server.js` if not needed locally
+- [ ] Real-time updates working (check navbar indicator)
+- [ ] `server.js` kept for local development (optional)
 
 ## Support
 For issues or questions, refer to:
+- [Real-time Setup Guide](./REALTIME_SETUP.md) - Configure Socket.IO or polling
 - Vercel Docs: https://vercel.com/docs/frameworks/nextjs
 - Next.js Docs: https://nextjs.org/docs
-- Socket.io Cloud: https://socket.io/cloud
